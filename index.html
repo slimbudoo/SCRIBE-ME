@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#101316">
   <meta name="description" content="SCRIBE-ME — private, browser-based transcription for recordings.">
-  <title>SCRIBE-ME — Transcription workspace</title>
+  <title>SCRIBE-ME — Transcription workspace (v1.2)</title>
   <style>
     :root{color-scheme:dark;--bg:#101316;--panel:#1a1f22;--panel2:#22282c;--border:#333b3f;--muted:#99a5a9;--text:#f0f2ed;--teal:#b9f2d5;--orange:#ff9b70;--blue:#99bbff;--shadow:0 24px 75px #0005}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.42;cursor:not-allowed}a{color:inherit}::selection{background:var(--teal);color:#111}
@@ -49,7 +49,7 @@
         <div class="transcript-bottom"><span id="footer-note">Every word stays on your device.</span><button type="button" id="add-speaker" disabled>+ Add speaker label</button></div>
       </section>
     </main>
-    <footer class="foot"><strong>SCRIBE-ME / A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. Automatic speaker identification is not included in this first version.</span></footer>
+    <footer class="foot"><strong>SCRIBE-ME / V1.2 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. Automatic speaker identification is not included in this first version.</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module">
@@ -85,7 +85,8 @@ self.onmessage=async e=>{
    }
    self.postMessage({type:'loaded'});
   }else if(m.type==='segment'){
-   const result=await transcriber(new Float32Array(m.audio),{return_timestamps:true,task:'transcribe'});
+   // English-only Whisper .en models reject task/language generation options.
+   const result=await transcriber(new Float32Array(m.audio),{return_timestamps:true});
    self.postMessage({type:'result',id:m.id,result});
   }
  }catch(err){self.postMessage({type:'error',message:err?.message||String(err)})}
@@ -127,7 +128,7 @@ try{
   status('Finished segment '+(i+1)+' of '+total,12+82*((i+1)/total));
  }
  done=true;status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review speech and speaker labels before publication';notice('Transcription complete. Review and download your TXT file.');
-}catch(err){console.error(err);status('Could not finish transcription',0);notice((err?.message||'Something went wrong')+' Try Chrome or Edge, a smaller model, or an audio-only file.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
+}catch(err){console.error(err);status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
 $('start').addEventListener('click',start);
 function transcriptText(){return segments.map(s=>`[${stamp(s.start)}] ${speakers[s.speaker]||'Unassigned'}: ${s.text.trim()}`).join('\n\n')}
 function render(){const t=$('transcript');t.replaceChildren();$('copy').disabled=!segments.length;$('download').disabled=!segments.length;$('add-speaker').disabled=!segments.length;$('search-area').style.display=segments.length?'flex':'none';
