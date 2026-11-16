@@ -28,7 +28,7 @@
     </section>
     <main class="workspace">
       <section class="panel" aria-labelledby="upload-heading">
-        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">V1.5 · IMPORT & PROCESS</span></div>
+        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">V1.6 · IMPORT & PROCESS</span></div>
         <div class="panel-body">
           <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a recording or drag one here"><div class="drop-icon">↥</div><strong>Drag your recording here</strong><p>Audio or video. Just drop it in and go.</p><button type="button" class="browse" id="browse">Choose a file&nbsp; ↗</button></div>
           <input id="file" type="file" hidden accept="audio/*,video/*,.mp3,.m4a,.mov,.mp4,.wav,.webm,.flac,.aac,.ogg,.opus,.wma,.mkv,.3gp">
@@ -40,7 +40,7 @@
           <div class="setting"><div><label for="speakers-mode">Speaker recognition</label><small>Match voices throughout the recording</small></div><select id="speakers-mode" class="select"><option value="auto" selected>Automatic · AI</option><option value="manual">Manual · Faster</option></select></div>
           <div class="model-note" id="model-note">Automatic speaker recognition uses additional local AI models, which download on first use. It can be slower and may confuse short replies or overlapping voices. Check speaker labels before quoting.</div>
           <button class="btn-main" id="start" type="button" disabled>Choose a recording to begin ↗</button>
-          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Build 1.5 · Awaiting recording.</div>
+          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Build 1.6 · Awaiting recording.</div><button id="copy-diagnostic" type="button" class="btn-outline" style="margin-top:10px;display:none">Copy error details</button>
         </div>
         <div class="help"><span>✳</span><div><strong style="color:#d9e7df">Private by design.</strong> Recordings are processed in your browser, not stored on our servers. You may need internet access to download the AI model. Do not close the tab while processing.</div></div>
       </section>
@@ -50,7 +50,7 @@
         <div class="transcript-bottom"><span id="footer-note">Every word stays on your device.</span><button type="button" id="add-speaker" disabled>+ Add speaker label</button></div>
       </section>
     </main>
-    <footer class="foot"><strong>SCRIBE-ME / V1.5 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. AI speaker labels are estimates; check them before publication.</span></footer>
+    <footer class="foot"><strong>SCRIBE-ME / V1.6 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. AI speaker labels are estimates; check them before publication.</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module">
@@ -61,11 +61,13 @@ $('wave').innerHTML=waveHeights.map((h,i)=>`<b style="--h:${h}px;--o:${0.55+0.45
 let selectedFile=null, objectUrl=null, decoded=null, worker=null, segments=[], speakers=['Speaker 1','Speaker 2'], busy=false, toastTimer;
 let audioContext=null, duration=0;
 let diarizationEngine=null;
+let speakerError='';
 function syncProcessingMode(){const auto=$('speakers-mode').value==='auto';$('engine').disabled=auto;$('engine').title=auto?'Automatic speaker engine chooses GPU or CPU based on browser support.':'Choose device for regular Whisper transcription.'}
 $('speakers-mode').addEventListener('change',syncProcessingMode);syncProcessingMode();
 const MAX_BYTES=350*1024*1024, SLICE_SECONDS=25, MODEL_IDS={tiny:'onnx-community/whisper-tiny.en',base:'onnx-community/whisper-base.en',small:'onnx-community/whisper-small.en'};
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3900)}
-function diagnostic(message){$('diagnostics').textContent='Build 1.5 · '+message}
+function diagnostic(message){$('diagnostics').textContent='Build 1.6 · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
+$('copy-diagnostic').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('diagnostics').textContent);notice('Error details copied.')}catch(e){notice('Select the error message to copy it.')}});
 function status(message,progress){$('status').textContent=message;if(Number.isFinite(progress)){const n=Math.max(0,Math.min(100,progress));$('percent').textContent=Math.round(n)+'%';$('bar').style.width=n+'%'}}
 function bytes(n){return (n/1024/1024).toFixed(1)+' MB'}
 function stamp(s){s=Math.max(0,Math.floor(s||0));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')}
@@ -222,7 +224,7 @@ async function startAutomatic(){
  button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;$('speakers-mode').disabled=true;
  button.textContent='Transcribing and identifying speakers…';
  try{
-  segments=[];render();status('Preparing recording for speaker recognition…',2);
+  speakerError='';segments=[];render();status('Preparing recording for speaker recognition…',2);
   diagnostic('Loading browser-only speaker recognition engine. Model downloads may take time.');
   const {EngineClient,buildCapabilityReport,resampleTo16kMono}=await import(DIARIZATION_PACKAGE);
   if(typeof EngineClient!=='function')throw new Error('The speaker recognition library could not be loaded.');
@@ -255,7 +257,7 @@ async function startAutomatic(){
   status('Transcribing and matching voices…',24);
   diagnostic('Matching voices across the recording. This can take significantly longer than transcription alone.');
   const raw=await diarizationEngine.transcribe(pcm,
-   {task:'transcribe',language:'en',diarize:true},
+   {task:'transcribe',language:'en'},
    {diarize:true,onPartial:(partial,processed,total)=>{
     if(total>0)status('Analysing speech and speakers…',24+Math.min(65,65*processed/total));
     if(Array.isArray(partial))diagnostic('AI analysing '+Math.round(processed)+' / '+Math.round(total)+' seconds · '+partial.length+' text sections so far.');
@@ -274,9 +276,10 @@ async function startAutomatic(){
  }catch(err){
   console.error('Automatic speaker processing failed:',err);
   const reason=err?.message||String(err);
+  speakerError=reason;
   status('Automatic speaker identification unavailable',0);
   diagnostic('AI speaker detection failed: '+reason+' · Falling back to proven transcription.');
-  notice('Voice matching was unavailable. Transcribing without automatic speaker labels.');
+  notice('Voice matching failed: '+reason.slice(0,140)+'. Regular transcription will continue.');
  }finally{
   try{diarizationEngine?.dispose()}catch(e){console.warn('Engine cleanup:',e)}
   diarizationEngine=null;
@@ -290,7 +293,7 @@ async function startAutomatic(){
   speakers=['Speaker 1','Speaker 2'];
   await startManual();
   if(segments.length){
-   diagnostic('Transcription succeeded, but automatic speaker detection was unavailable. Assign speakers manually.');
+   diagnostic('Normal transcription succeeded. Voice recognition failed: '+speakerError+' · Assign speakers manually.');
    $('footer-note').textContent=segments.length+' sections · speaker recognition unavailable; manual speaker labels';
   }
  }
