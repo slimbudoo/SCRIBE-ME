@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#101316">
   <meta name="description" content="SCRIBE-ME — private, browser-based transcription for recordings.">
-  <title>SCRIBE-ME — Transcription workspace (v1.2)</title>
+  <title>SCRIBE-ME — Transcription workspace (v1.5)</title>
   <style>
     :root{color-scheme:dark;--bg:#101316;--panel:#1a1f22;--panel2:#22282c;--border:#333b3f;--muted:#99a5a9;--text:#f0f2ed;--teal:#b9f2d5;--orange:#ff9b70;--blue:#99bbff;--shadow:0 24px 75px #0005}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.42;cursor:not-allowed}a{color:inherit}::selection{background:var(--teal);color:#111}
@@ -28,7 +28,7 @@
     </section>
     <main class="workspace">
       <section class="panel" aria-labelledby="upload-heading">
-        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">V1.4 · IMPORT & PROCESS</span></div>
+        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">V1.5 · IMPORT & PROCESS</span></div>
         <div class="panel-body">
           <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a recording or drag one here"><div class="drop-icon">↥</div><strong>Drag your recording here</strong><p>Audio or video. Just drop it in and go.</p><button type="button" class="browse" id="browse">Choose a file&nbsp; ↗</button></div>
           <input id="file" type="file" hidden accept="audio/*,video/*,.mp3,.m4a,.mov,.mp4,.wav,.webm,.flac,.aac,.ogg,.opus,.wma,.mkv,.3gp">
@@ -36,10 +36,11 @@
           <div class="file-card" id="file-card"><div class="file-icon">♫</div><div class="meta"><strong id="filename"></strong><small id="filemeta"></small></div><button type="button" class="icon-btn" id="remove" aria-label="Remove recording">×</button></div>
           <div class="section-label">Processing preferences</div>
           <div class="setting"><div><label for="model">Transcription model</label><small>Higher accuracy needs more memory</small></div><select id="model" class="select"><option value="tiny">Fast · Tiny</option><option value="base" selected>Balanced · Base</option><option value="small">Accurate · Small</option></select></div>
-          <div class="setting"><div><label for="engine">Processing device</label><small>GPU where available</small></div><select id="engine" class="select"><option value="auto" selected>Automatic</option><option value="wasm">CPU compatibility</option></select></div>
-          <div class="model-note" id="model-note">English transcription with timestamps. Speaker labels are manual in this version. The AI model downloads on first use; recordings stay on your device.</div>
+          <div class="setting"><div><label for="engine">Processing device</label><small>Used for manual speaker mode only</small></div><select id="engine" class="select"><option value="auto" selected>Automatic</option><option value="wasm">CPU compatibility</option></select></div>
+          <div class="setting"><div><label for="speakers-mode">Speaker recognition</label><small>Match voices throughout the recording</small></div><select id="speakers-mode" class="select"><option value="auto" selected>Automatic · AI</option><option value="manual">Manual · Faster</option></select></div>
+          <div class="model-note" id="model-note">Automatic speaker recognition uses additional local AI models, which download on first use. It can be slower and may confuse short replies or overlapping voices. Check speaker labels before quoting.</div>
           <button class="btn-main" id="start" type="button" disabled>Choose a recording to begin ↗</button>
-          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Build 1.4 · Awaiting recording.</div>
+          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Build 1.5 · Awaiting recording.</div>
         </div>
         <div class="help"><span>✳</span><div><strong style="color:#d9e7df">Private by design.</strong> Recordings are processed in your browser, not stored on our servers. You may need internet access to download the AI model. Do not close the tab while processing.</div></div>
       </section>
@@ -49,7 +50,7 @@
         <div class="transcript-bottom"><span id="footer-note">Every word stays on your device.</span><button type="button" id="add-speaker" disabled>+ Add speaker label</button></div>
       </section>
     </main>
-    <footer class="foot"><strong>SCRIBE-ME / V1.4 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. Automatic speaker identification is not included in this first version.</span></footer>
+    <footer class="foot"><strong>SCRIBE-ME / V1.5 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. AI speaker labels are estimates; check them before publication.</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module">
@@ -59,9 +60,12 @@ const waveHeights=[18,37,63,25,91,46,72,116,57,92,40,124,72,49,108,32,84,66,24,7
 $('wave').innerHTML=waveHeights.map((h,i)=>`<b style="--h:${h}px;--o:${0.55+0.45*Math.sin((i+3)/24*Math.PI)}"></b>`).join('');
 let selectedFile=null, objectUrl=null, decoded=null, worker=null, segments=[], speakers=['Speaker 1','Speaker 2'], busy=false, toastTimer;
 let audioContext=null, duration=0;
+let diarizationEngine=null;
+function syncProcessingMode(){const auto=$('speakers-mode').value==='auto';$('engine').disabled=auto;$('engine').title=auto?'Automatic speaker engine chooses GPU or CPU based on browser support.':'Choose device for regular Whisper transcription.'}
+$('speakers-mode').addEventListener('change',syncProcessingMode);syncProcessingMode();
 const MAX_BYTES=350*1024*1024, SLICE_SECONDS=25, MODEL_IDS={tiny:'onnx-community/whisper-tiny.en',base:'onnx-community/whisper-base.en',small:'onnx-community/whisper-small.en'};
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3900)}
-function diagnostic(message){$('diagnostics').textContent='Build 1.4 · '+message}
+function diagnostic(message){$('diagnostics').textContent='Build 1.5 · '+message}
 function status(message,progress){$('status').textContent=message;if(Number.isFinite(progress)){const n=Math.max(0,Math.min(100,progress));$('percent').textContent=Math.round(n)+'%';$('bar').style.width=n+'%'}}
 function bytes(n){return (n/1024/1024).toFixed(1)+' MB'}
 function stamp(s){s=Math.max(0,Math.floor(s||0));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')}
@@ -132,7 +136,7 @@ function appendResult(result,offset,length){
   segments.push({start:offset,end:offset+length,text:result.text.trim(),speaker:-1});
  return segments.length-originalCount;
 }
-async function start(){if(busy||!selectedFile)return;busy=true;const button=$('start');button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;button.textContent='Transcribing…';let done=false;
+async function startManual(){if(busy||!selectedFile)return;busy=true;const button=$('start');button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;$('speakers-mode').disabled=true;button.textContent='Transcribing…';let done=false;
 try{
  status('Preparing recording…',0);diagnostic('Starting a new transcription.');$('count').textContent='0 sections';
  const ctx=new (window.AudioContext||window.webkitAudioContext)();audioContext=ctx;
@@ -177,7 +181,121 @@ try{
  }
  if(!segments.length)throw new Error('AI returned no usable transcript text. Try Fast · Tiny / CPU, and see the diagnostic line below the progress bar.');
  render();if(!segments.length||$('download').disabled||!$('transcript').querySelector('.segment'))throw new Error('Transcript could not be displayed. No success was reported.');done=true;diagnostic('SUCCESS: '+segments.length+' transcript sections displayed; TXT download is enabled.');status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review speech and speaker labels before publication';notice('Transcription complete. Review and download your TXT file.');
-}catch(err){console.error(err);diagnostic('FAILED: '+(err?.message||'Transcription failed'));status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
+}catch(err){console.error(err);diagnostic('FAILED: '+(err?.message||'Transcription failed'));status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;$('speakers-mode').disabled=false;syncProcessingMode();decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
+// Automatic diarisation: a separate browser-only AI engine, with the established
+// Whisper implementation retained as an explicit fallback. Nothing is uploaded.
+const DIARIZATION_PACKAGE='https://esm.sh/@yourdevice/engine@0.1.1?bundle';
+const DIARIZATION_WORKER='https://esm.sh/@yourdevice/engine@0.1.1/worker?bundle';
+const DIARIZATION_MODELS={tiny:'whisper-tiny',base:'whisper-base',small:'whisper-small'};
+function recognisedSpeakerLabels(items){
+ const unique=[];
+ for(const item of items){
+  const label=typeof item.speaker==='string'?item.speaker.trim():'';
+  if(label && !unique.includes(label))unique.push(label);
+ }
+ return unique;
+}
+function parseDiarizedResults(items){
+ if(!Array.isArray(items))throw new Error('Speaker engine returned an unexpected transcript format.');
+ const rawLabels=recognisedSpeakerLabels(items);
+ if(!rawLabels.length)throw new Error('The speaker engine returned text, but did not recognise any distinct voices.');
+ const sorted=rawLabels.sort((a,b)=>{
+  const firstA=items.find(i=>i.speaker===a)?.start??Infinity;
+  const firstB=items.find(i=>i.speaker===b)?.start??Infinity;
+  return firstA-firstB;
+ });
+ const nextSpeakers=sorted.map((_,i)=>'Speaker '+(i+1));
+ const nextSegments=items.filter(i=>typeof i.text==='string'&&i.text.trim()).map(i=>({
+  start:Number.isFinite(i.start)?Math.max(0,i.start):0,
+  end:Number.isFinite(i.end)?Math.max(0,i.end):0,
+  text:i.text.trim(),
+  speaker:sorted.indexOf(i.speaker)
+ }));
+ if(!nextSegments.length)throw new Error('The speaker engine did not return any usable speech.');
+ if(nextSegments.every(i=>i.speaker<0))throw new Error('The speaker engine could not assign voices.');
+ return {nextSpeakers,nextSegments};
+}
+async function startAutomatic(){
+ if(busy||!selectedFile)return;
+ busy=true;
+ const button=$('start');let done=false;
+ button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;$('speakers-mode').disabled=true;
+ button.textContent='Transcribing and identifying speakers…';
+ try{
+  segments=[];render();status('Preparing recording for speaker recognition…',2);
+  diagnostic('Loading browser-only speaker recognition engine. Model downloads may take time.');
+  const {EngineClient,buildCapabilityReport,resampleTo16kMono}=await import(DIARIZATION_PACKAGE);
+  if(typeof EngineClient!=='function')throw new Error('The speaker recognition library could not be loaded.');
+  const workerFactory=()=>{
+   const blob=new Blob([`import ${JSON.stringify(DIARIZATION_WORKER)};`],{type:'text/javascript'});
+   const url=URL.createObjectURL(blob);
+   const w=new Worker(url,{type:'module'});
+   setTimeout(()=>URL.revokeObjectURL(url),10000);
+   return w;
+  };
+  diarizationEngine=new EngineClient(workerFactory);
+  diarizationEngine.onDownloadProgress=({loadedBytes,totalBytes})=>{
+   if(totalBytes>0)status('Downloading speaker and speech models…',Math.min(18,4+14*loadedBytes/totalBytes));
+  };
+  const report=buildCapabilityReport({navigator,WebAssembly});
+  const model=DIARIZATION_MODELS[$('model').value];
+  status('Initialising speech and speaker models…',6);
+  // The client owns the device fallback: WebNN, WebGPU, then WASM.
+  const capabilities=await diarizationEngine.init(model);
+  diagnostic('AI engine active on '+(capabilities?.active||'browser')+' · preparing voice analysis.');
+  status('Decoding recording locally…',20);
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();audioContext=ctx;
+  const decodedAudio=await ctx.decodeAudioData(await selectedFile.arrayBuffer());
+  if(!decodedAudio.duration||!Number.isFinite(decodedAudio.duration))throw new Error('No decodable audio was found.');
+  duration=decodedAudio.duration;
+  const pcm=resampleTo16kMono({
+   channelData:Array.from({length:decodedAudio.numberOfChannels},(_,i)=>decodedAudio.getChannelData(i)),
+   sampleRate:decodedAudio.sampleRate
+  });
+  status('Transcribing and matching voices…',24);
+  diagnostic('Matching voices across the recording. This can take significantly longer than transcription alone.');
+  const raw=await diarizationEngine.transcribe(pcm,
+   {task:'transcribe',language:'en',diarize:true},
+   {diarize:true,onPartial:(partial,processed,total)=>{
+    if(total>0)status('Analysing speech and speakers…',24+Math.min(65,65*processed/total));
+    if(Array.isArray(partial))diagnostic('AI analysing '+Math.round(processed)+' / '+Math.round(total)+' seconds · '+partial.length+' text sections so far.');
+   }});
+  status('Preparing speaker-labelled transcript…',94);
+  const parsed=parseDiarizedResults(raw);
+  speakers=parsed.nextSpeakers;
+  segments=parsed.nextSegments;
+  render();
+  if(!segments.length||$('download').disabled)throw new Error('Speaker transcript could not be displayed.');
+  done=true;
+  status('Transcript ready — check speaker labels',100);
+  diagnostic('SUCCESS: '+segments.length+' transcript sections · '+speakers.length+' detected voices.');
+  $('footer-note').textContent=segments.length+' transcript sections · '+speakers.length+' AI-detected voices · verify before quoting';
+  notice('Speaker-labelled transcript ready. Check labels before using quotes.');
+ }catch(err){
+  console.error('Automatic speaker processing failed:',err);
+  const reason=err?.message||String(err);
+  status('Automatic speaker identification unavailable',0);
+  diagnostic('AI speaker detection failed: '+reason+' · Falling back to proven transcription.');
+  notice('Voice matching was unavailable. Transcribing without automatic speaker labels.');
+ }finally{
+  try{diarizationEngine?.dispose()}catch(e){console.warn('Engine cleanup:',e)}
+  diarizationEngine=null;
+  if(audioContext){audioContext.close().catch(()=>{});audioContext=null}
+  busy=false;$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;$('speakers-mode').disabled=false;syncProcessingMode();
+  button.disabled=!selectedFile;
+  button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';
+ }
+ if(!done){
+  // Do not lose the original working transcription route when diarisation fails.
+  speakers=['Speaker 1','Speaker 2'];
+  await startManual();
+  if(segments.length){
+   diagnostic('Transcription succeeded, but automatic speaker detection was unavailable. Assign speakers manually.');
+   $('footer-note').textContent=segments.length+' sections · speaker recognition unavailable; manual speaker labels';
+  }
+ }
+}
+function start(){return $('speakers-mode').value==='auto'?startAutomatic():startManual()}
 $('start').addEventListener('click',start);
 function transcriptText(){return segments.map(s=>`[${stamp(s.start)}] ${speakers[s.speaker]||'Unassigned'}: ${s.text.trim()}`).join('\n\n')}
 function render(){const t=$('transcript');t.replaceChildren();$('copy').disabled=!segments.length;$('download').disabled=!segments.length;$('add-speaker').disabled=!segments.length;$('search-area').style.display=segments.length?'flex':'none';
@@ -189,7 +307,7 @@ $('add-speaker').addEventListener('click',()=>{const value=prompt('Name for a ne
 $('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(transcriptText());notice('Transcript copied to clipboard.')}catch{notice('Could not copy. Try Download .txt instead.')}});
 $('download').addEventListener('click',()=>{if(!segments.length)return;const base=(selectedFile?.name||'transcript').replace(/\.[^.]+$/,'').replace(/[^a-zA-Z0-9._ -]+/g,'_');const blob=new Blob([transcriptText()+'\n'],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=base+'-transcript.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);notice('TXT download started.')});
 $('player').addEventListener('error',()=>{if(selectedFile)notice('This browser may not support playback for this file format. Try MP3, M4A or WAV.')});
-if(!navigator.gpu){$('model-note').textContent='This browser has no available WebGPU interface. Transcription will use the CPU and may be slow. For best results, try current Chrome, Brave or Edge. Audio never leaves your device.'}
+if(!navigator.gpu){$('model-note').textContent+=' This browser may use slower CPU processing because WebGPU is unavailable.'}
 </script>
 </body>
 </html>
