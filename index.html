@@ -28,7 +28,7 @@
     </section>
     <main class="workspace">
       <section class="panel" aria-labelledby="upload-heading">
-        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">IMPORT & PROCESS</span></div>
+        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">V1.4 · IMPORT & PROCESS</span></div>
         <div class="panel-body">
           <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a recording or drag one here"><div class="drop-icon">↥</div><strong>Drag your recording here</strong><p>Audio or video. Just drop it in and go.</p><button type="button" class="browse" id="browse">Choose a file&nbsp; ↗</button></div>
           <input id="file" type="file" hidden accept="audio/*,video/*,.mp3,.m4a,.mov,.mp4,.wav,.webm,.flac,.aac,.ogg,.opus,.wma,.mkv,.3gp">
@@ -39,7 +39,7 @@
           <div class="setting"><div><label for="engine">Processing device</label><small>GPU where available</small></div><select id="engine" class="select"><option value="auto" selected>Automatic</option><option value="wasm">CPU compatibility</option></select></div>
           <div class="model-note" id="model-note">English transcription with timestamps. Speaker labels are manual in this version. The AI model downloads on first use; recordings stay on your device.</div>
           <button class="btn-main" id="start" type="button" disabled>Choose a recording to begin ↗</button>
-          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div>
+          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Build 1.4 · Awaiting recording.</div>
         </div>
         <div class="help"><span>✳</span><div><strong style="color:#d9e7df">Private by design.</strong> Recordings are processed in your browser, not stored on our servers. You may need internet access to download the AI model. Do not close the tab while processing.</div></div>
       </section>
@@ -49,7 +49,7 @@
         <div class="transcript-bottom"><span id="footer-note">Every word stays on your device.</span><button type="button" id="add-speaker" disabled>+ Add speaker label</button></div>
       </section>
     </main>
-    <footer class="foot"><strong>SCRIBE-ME / V1.2 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. Automatic speaker identification is not included in this first version.</span></footer>
+    <footer class="foot"><strong>SCRIBE-ME / V1.4 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. Automatic speaker identification is not included in this first version.</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module">
@@ -61,11 +61,12 @@ let selectedFile=null, objectUrl=null, decoded=null, worker=null, segments=[], s
 let audioContext=null, duration=0;
 const MAX_BYTES=350*1024*1024, SLICE_SECONDS=25, MODEL_IDS={tiny:'onnx-community/whisper-tiny.en',base:'onnx-community/whisper-base.en',small:'onnx-community/whisper-small.en'};
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3900)}
+function diagnostic(message){$('diagnostics').textContent='Build 1.4 · '+message}
 function status(message,progress){$('status').textContent=message;if(Number.isFinite(progress)){const n=Math.max(0,Math.min(100,progress));$('percent').textContent=Math.round(n)+'%';$('bar').style.width=n+'%'}}
 function bytes(n){return (n/1024/1024).toFixed(1)+' MB'}
 function stamp(s){s=Math.max(0,Math.floor(s||0));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,'0')).join(':')}
-function resetFile(){if(busy)return;selectedFile=null;decoded=null;duration=0;segments=[];if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=null;$('player').removeAttribute('src');$('audio-wrap').style.display='none';$('file-card').style.display='none';$('drop').style.display='flex';$('start').disabled=true;$('start').textContent='Choose a recording to begin ↗';$('file').value='';$('copy').disabled=true;$('download').disabled=true;$('add-speaker').disabled=true;$('search-area').style.display='none';$('footer-note').textContent='Every word stays on your device.';status('Ready when you are',0);render()}
-function choose(file){if(busy||!file)return;if(file.size>MAX_BYTES){notice('File exceeds 350 MB. Try an audio-only export or smaller recording.');return}if(objectUrl)URL.revokeObjectURL(objectUrl);selectedFile=file;decoded=null;segments=[];duration=0;objectUrl=URL.createObjectURL(file);$('filename').textContent=file.name;$('filemeta').textContent=bytes(file.size)+' · '+(file.type||'media file');$('file-card').style.display='flex';$('drop').style.display='none';$('start').disabled=false;$('start').textContent='✳  Transcribe recording';$('player').src=objectUrl;$('audio-wrap').style.display='block';$('copy').disabled=true;$('download').disabled=true;$('add-speaker').disabled=true;$('search-area').style.display='none';status('Recording ready',0);render();if(file.size>100*1024*1024)notice('Large file selected. Browser memory may limit decoding; audio-only files work best.')}
+function resetFile(){if(busy)return;selectedFile=null;decoded=null;duration=0;segments=[];if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=null;$('player').removeAttribute('src');$('audio-wrap').style.display='none';$('file-card').style.display='none';$('drop').style.display='flex';$('start').disabled=true;$('start').textContent='Choose a recording to begin ↗';$('file').value='';$('copy').disabled=true;$('download').disabled=true;$('add-speaker').disabled=true;$('search-area').style.display='none';$('footer-note').textContent='Every word stays on your device.';status('Ready when you are',0);diagnostic('Awaiting recording.');$('count').textContent='0 sections';render()}
+function choose(file){if(busy||!file)return;if(file.size>MAX_BYTES){notice('File exceeds 350 MB. Try an audio-only export or smaller recording.');return}if(objectUrl)URL.revokeObjectURL(objectUrl);selectedFile=file;decoded=null;segments=[];duration=0;objectUrl=URL.createObjectURL(file);$('filename').textContent=file.name;$('filemeta').textContent=bytes(file.size)+' · '+(file.type||'media file');$('file-card').style.display='flex';$('drop').style.display='none';$('start').disabled=false;$('start').textContent='✳  Transcribe recording';$('player').src=objectUrl;$('audio-wrap').style.display='block';$('copy').disabled=true;$('download').disabled=true;$('add-speaker').disabled=true;$('search-area').style.display='none';status('Recording ready',0);diagnostic('Recording loaded; model not started.');$('count').textContent='0 sections';render();if(file.size>100*1024*1024)notice('Large file selected. Browser memory may limit decoding; audio-only files work best.')}
 $('browse').addEventListener('click',ev=>{ev.stopPropagation();$('file').click()});$('drop').addEventListener('click',()=>!busy&&$('file').click());$('drop').addEventListener('keydown',ev=>{if((ev.key==='Enter'||ev.key===' ')&&!busy){ev.preventDefault();$('file').click()}});$('file').addEventListener('change',e=>choose(e.target.files[0]));$('remove').addEventListener('click',resetFile);
 for(const ev of ['dragenter','dragover'])$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.add('drag')});for(const ev of ['dragleave','drop'])$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.remove('drag')});$('drop').addEventListener('drop',e=>choose(e.dataTransfer.files[0]));
 function workerSource(){return `
@@ -116,10 +117,24 @@ async function resampleSlice(buffer,start,end){
 }
 function audioLevel(samples){let sum=0;for(let i=0;i<samples.length;i++)sum+=samples[i]*samples[i];return Math.sqrt(sum/Math.max(1,samples.length))}
 function hasWords(r){return !!(typeof r?.text==='string'&&r.text.trim() || Array.isArray(r?.chunks)&&r.chunks.some(c=>typeof c?.text==='string'&&c.text.trim()))}
-function appendResult(result,offset,length){const chunks=Array.isArray(result.chunks)?result.chunks:[];if(chunks.length){for(const part of chunks){const txt=(part.text||'').trim();if(!txt)continue;const start=Number(part.timestamp?.[0]);const end=Number(part.timestamp?.[1]);segments.push({start:offset+(Number.isFinite(start)?start:0),end:offset+(Number.isFinite(end)?end:length),text:txt,speaker:-1})}}else if(result.text?.trim())segments.push({start:offset,end:offset+length,text:result.text.trim(),speaker:-1})}
+function appendResult(result,offset,length){
+ // A model may return a transcript string, timestamped chunks, or both.
+ // Never discard non-empty text simply because an empty or malformed chunks array exists.
+ const originalCount=segments.length;
+ if(Array.isArray(result?.chunks))for(const part of result.chunks){
+  const txt=typeof part?.text==='string'?part.text.trim():'';if(!txt)continue;
+  const t=part.timestamp;
+  const start=Array.isArray(t)&&Number.isFinite(t[0])?t[0]:0;
+  const end=Array.isArray(t)&&Number.isFinite(t[1])?t[1]:length;
+  segments.push({start:offset+start,end:offset+end,text:txt,speaker:-1});
+ }
+ if(segments.length===originalCount&&typeof result?.text==='string'&&result.text.trim())
+  segments.push({start:offset,end:offset+length,text:result.text.trim(),speaker:-1});
+ return segments.length-originalCount;
+}
 async function start(){if(busy||!selectedFile)return;busy=true;const button=$('start');button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;button.textContent='Transcribing…';let done=false;
 try{
- status('Preparing recording…',0);
+ status('Preparing recording…',0);diagnostic('Starting a new transcription.');$('count').textContent='0 sections';
  const ctx=new (window.AudioContext||window.webkitAudioContext)();audioContext=ctx;
  // decodeAudioData supports codecs the browser can actually decode. Large recordings may exceed browser memory.
  const input=await selectedFile.arrayBuffer();
@@ -148,24 +163,25 @@ try{
   const level=audioLevel(data);
   if(level<0.00003){
    // Silence can legitimately appear between speakers. Do not hallucinate it.
-   status('Skipping silent segment '+(i+1)+' of '+total+'…',12+82*((i+1)/total));
+   diagnostic('Skipped silent audio section '+(i+1)+' of '+total+'.');status('Skipping silent segment '+(i+1)+' of '+total+'…',12+82*((i+1)/total));
    continue;
   }
   const response=await request(worker,{type:'segment',audio:data.buffer,id:i},[data.buffer]);
   if(!hasWords(response.result)){
+   diagnostic('WARNING: AI returned no text for audio section '+(i+1)+'; audio level '+level.toFixed(5));
    console.warn('Empty model response for segment',i+1, 'RMS',level, 'response',response.result);
   }
   appendResult(response.result,begin,end-begin);
   render();
-  status('Finished segment '+(i+1)+' of '+total,12+82*((i+1)/total));
+  diagnostic('Processed '+(i+1)+' of '+total+' audio sections · '+segments.length+' transcript sections produced.');status('Finished segment '+(i+1)+' of '+total,12+82*((i+1)/total));
  }
- if(!segments.length)throw new Error('The AI processed the audio but returned no words. This is not a completed transcript. Try Fast · Tiny, or another browser, and check the browser console for empty model responses.');
- done=true;status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review speech and speaker labels before publication';notice('Transcription complete. Review and download your TXT file.');
-}catch(err){console.error(err);status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
+ if(!segments.length)throw new Error('AI returned no usable transcript text. Try Fast · Tiny / CPU, and see the diagnostic line below the progress bar.');
+ render();if(!segments.length||$('download').disabled||!$('transcript').querySelector('.segment'))throw new Error('Transcript could not be displayed. No success was reported.');done=true;diagnostic('SUCCESS: '+segments.length+' transcript sections displayed; TXT download is enabled.');status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review speech and speaker labels before publication';notice('Transcription complete. Review and download your TXT file.');
+}catch(err){console.error(err);diagnostic('FAILED: '+(err?.message||'Transcription failed'));status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
 $('start').addEventListener('click',start);
 function transcriptText(){return segments.map(s=>`[${stamp(s.start)}] ${speakers[s.speaker]||'Unassigned'}: ${s.text.trim()}`).join('\n\n')}
 function render(){const t=$('transcript');t.replaceChildren();$('copy').disabled=!segments.length;$('download').disabled=!segments.length;$('add-speaker').disabled=!segments.length;$('search-area').style.display=segments.length?'flex':'none';
- if(!segments.length){const div=document.createElement('div');div.className='empty';div.id='empty';div.innerHTML='<div class="empty-orbit">≋</div><h3>A blank page, for now.</h3><p>When your transcription is ready, you\'ll find the words here. Review, edit, play back and export.</p>';t.appendChild(div);return}
+ if(!segments.length){$('count').textContent='0 sections';const div=document.createElement('div');div.className='empty';div.id='empty';div.innerHTML='<div class="empty-orbit">≋</div><h3>A blank page, for now.</h3><p>When your transcription is ready, you\'ll find the words here. Review, edit, play back and export.</p>';t.appendChild(div);return}
  const query=$('search').value.trim().toLowerCase();let showing=0;
  segments.forEach((s,i)=>{if(query&&!s.text.toLowerCase().includes(query)&&!(speakers[s.speaker]||'').toLowerCase().includes(query))return;showing++;const row=document.createElement('div');row.className='segment';const time=document.createElement('button');time.className='time';time.textContent=stamp(s.start);time.title='Play audio from here';time.onclick=()=>{const p=$('player');if(p.src){p.currentTime=s.start;p.play().catch(()=>notice('Click play in the audio player.'))}};row.appendChild(time);const main=document.createElement('div');main.className='segment-main';const header=document.createElement('div');header.className='speaker-row';const select=document.createElement('select');select.className='speaker-select';select.title='Manually assign a speaker';speakers.forEach((sp,j)=>{const option=document.createElement('option');option.value=j;option.textContent=sp;select.appendChild(option)});const unknown=document.createElement('option');unknown.value='-1';unknown.textContent='Unassigned';select.appendChild(unknown);select.value=String(s.speaker);select.onchange=()=>{s.speaker=Number(select.value)};header.appendChild(select);main.appendChild(header);const edit=document.createElement('textarea');edit.value=s.text;edit.rows=2;edit.setAttribute('aria-label','Transcript text at '+stamp(s.start));edit.addEventListener('input',()=>{s.text=edit.value});main.appendChild(edit);row.appendChild(main);t.appendChild(row)});$('count').textContent=showing+' / '+segments.length+' sections'}
 $('search').addEventListener('input',render);
