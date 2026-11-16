@@ -86,13 +86,36 @@ self.onmessage=async e=>{
    self.postMessage({type:'loaded'});
   }else if(m.type==='segment'){
    // English-only Whisper .en models reject task/language generation options.
-   const result=await transcriber(new Float32Array(m.audio),{return_timestamps:true});
+   const samples=new Float32Array(m.audio);
+   let result=await transcriber(samples,{return_timestamps:true});
+   // Some model/browser combinations return no words when timestamps are requested.
+   // Retry without timestamps before reporting a silent result.
+   const spoken=(r)=>typeof r?.text==='string'&&r.text.trim() || (Array.isArray(r?.chunks)&&r.chunks.some(c=>c?.text?.trim()));
+   if(!spoken(result)) result=await transcriber(samples);
    self.postMessage({type:'result',id:m.id,result});
   }
  }catch(err){self.postMessage({type:'error',message:err?.message||String(err)})}
 };`}
 function request(w,data,transfer=[]){return new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{clean();reject(new Error('Processing timed out. Try a smaller model or shorter recording.'))},10*60*1000);function clean(){clearTimeout(timeout);w.removeEventListener('message',onMessage);w.removeEventListener('error',onError)}function onError(e){clean();reject(new Error(e.message||'The transcription worker stopped unexpectedly.'))}function onMessage(e){const m=e.data;if(m.type==='stage'){status(m.message);return}if(m.type==='model-progress'){status('Downloading AI model…',Math.min(12,(m.value||0)*.12));return}if(m.type==='error'){clean();reject(new Error(m.message));return}if(m.type==='loaded'&&data.type==='load'||m.type==='result'&&data.type==='segment'&&m.id===data.id){clean();resolve(m)}}w.addEventListener('message',onMessage);w.addEventListener('error',onError);w.postMessage(data,transfer)})}
-async function resampleSlice(buffer,start,end){const len=Math.ceil((end-start)*16000);const offline=new OfflineAudioContext(1,len,16000);const source=offline.createBufferSource();source.buffer=buffer;source.connect(offline.destination);source.start(0,start,end-start);const rendered=await offline.startRendering();return rendered.getChannelData(0).slice()}
+// Extract and downmix directly from decoded audio. This avoids intermittent silent
+// OfflineAudioContext renders on some Safari/Chromium configurations.
+async function resampleSlice(buffer,start,end){
+ const rate=buffer.sampleRate, targetRate=16000;
+ const channels=Array.from({length:buffer.numberOfChannels},(_,i)=>buffer.getChannelData(i));
+ const first=Math.max(0,Math.floor(start*rate)), last=Math.min(buffer.length,Math.ceil(end*rate));
+ const count=Math.max(1,Math.floor((last-first)*targetRate/rate));
+ const output=new Float32Array(count);
+ const scale=rate/targetRate;
+ for(let i=0;i<count;i++){
+  const x=first+i*scale,j=Math.min(last-1,Math.floor(x)),next=Math.min(last-1,j+1),f=x-j;
+  let sample=0;
+  for(const channel of channels)sample+=channel[j]*(1-f)+channel[next]*f;
+  output[i]=sample/channels.length;
+ }
+ return output;
+}
+function audioLevel(samples){let sum=0;for(let i=0;i<samples.length;i++)sum+=samples[i]*samples[i];return Math.sqrt(sum/Math.max(1,samples.length))}
+function hasWords(r){return !!(typeof r?.text==='string'&&r.text.trim() || Array.isArray(r?.chunks)&&r.chunks.some(c=>typeof c?.text==='string'&&c.text.trim()))}
 function appendResult(result,offset,length){const chunks=Array.isArray(result.chunks)?result.chunks:[];if(chunks.length){for(const part of chunks){const txt=(part.text||'').trim();if(!txt)continue;const start=Number(part.timestamp?.[0]);const end=Number(part.timestamp?.[1]);segments.push({start:offset+(Number.isFinite(start)?start:0),end:offset+(Number.isFinite(end)?end:length),text:txt,speaker:-1})}}else if(result.text?.trim())segments.push({start:offset,end:offset+length,text:result.text.trim(),speaker:-1})}
 async function start(){if(busy||!selectedFile)return;busy=true;const button=$('start');button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;button.textContent='Transcribing…';let done=false;
 try{
@@ -122,11 +145,21 @@ try{
   const begin=i*SLICE_SECONDS,end=Math.min(duration,begin+SLICE_SECONDS);
   status('Transcribing segment '+(i+1)+' of '+total+'…',12+82*(i/total));
   const data=await resampleSlice(buffer,begin,end);
+  const level=audioLevel(data);
+  if(level<0.00003){
+   // Silence can legitimately appear between speakers. Do not hallucinate it.
+   status('Skipping silent segment '+(i+1)+' of '+total+'…',12+82*((i+1)/total));
+   continue;
+  }
   const response=await request(worker,{type:'segment',audio:data.buffer,id:i},[data.buffer]);
+  if(!hasWords(response.result)){
+   console.warn('Empty model response for segment',i+1, 'RMS',level, 'response',response.result);
+  }
   appendResult(response.result,begin,end-begin);
   render();
   status('Finished segment '+(i+1)+' of '+total,12+82*((i+1)/total));
  }
+ if(!segments.length)throw new Error('The AI processed the audio but returned no words. This is not a completed transcript. Try Fast · Tiny, or another browser, and check the browser console for empty model responses.');
  done=true;status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review speech and speaker labels before publication';notice('Transcription complete. Review and download your TXT file.');
 }catch(err){console.error(err);status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
 $('start').addEventListener('click',start);
