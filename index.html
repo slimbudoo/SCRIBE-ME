@@ -80,7 +80,7 @@ self.onmessage=async e=>{
    const key=m.model+'|'+m.device;
    if(currentKey!==key){if(transcriber?.dispose)await transcriber.dispose();transcriber=null;currentKey=''}
    if(!transcriber){
-    const options={device:m.device,progress_callback:p=>{if(p.status==='progress'&&typeof p.progress==='number')self.postMessage({type:'model-progress',value:p.progress});}};
+    const options={device:m.device,...(m.device==='wasm'?{dtype:'q8'}:{}),progress_callback:p=>{if(p.status==='progress'&&typeof p.progress==='number')self.postMessage({type:'model-progress',value:p.progress});}};
     transcriber=await pipeline('automatic-speech-recognition',m.model,options);currentKey=key;
    }
    self.postMessage({type:'loaded'});
@@ -108,7 +108,14 @@ try{
  const wantGpu=$('engine').value==='auto'&&!!navigator.gpu;
  const device=wantGpu?'webgpu':'wasm';const model=MODEL_IDS[$('model').value];
  status('Loading AI model…',5);
- try{await request(worker,{type:'load',model,device})}catch(e){if(device!=='webgpu')throw e;status('GPU unavailable; retrying on CPU…',5);await request(worker,{type:'load',model,device:'wasm'})}
+ try{await request(worker,{type:'load',model,device})}catch(e){
+  if(device!=='webgpu')throw e;
+  status('GPU unavailable; restarting with CPU compatibility…',5);
+  worker.terminate();worker=null;
+  const fallbackUrl=URL.createObjectURL(new Blob([workerSource()],{type:'application/javascript'}));
+  worker=new Worker(fallbackUrl,{type:'module'});URL.revokeObjectURL(fallbackUrl);
+  try{await request(worker,{type:'load',model,device:'wasm'})}catch(cpuError){throw new Error('GPU failed ('+e.message+'); CPU fallback also failed ('+cpuError.message+'). Try Fast · Tiny with CPU compatibility.');}
+ }
  segments=[];render();const total=Math.ceil(duration/SLICE_SECONDS);
  for(let i=0;i<total;i++){
   const begin=i*SLICE_SECONDS,end=Math.min(duration,begin+SLICE_SECONDS);
