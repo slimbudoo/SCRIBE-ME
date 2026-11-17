@@ -1,11 +1,11 @@
-# SCRIBE-ME — Stable edition
+# SCRIBE-ME — Auto Import v2.1
 
-Free browser-based audio transcription with Whisper, timestamps, editing, playback and TXT download.
+Browser-based transcription on GitHub Pages. Recordings remain on the user’s device.
 
-Automatic speaker recognition was removed because the experimental speaker engine returned no speaker identifiers. All speaker assignments are **manual**. Text blocks are based on Whisper timestamps and 25-second processing sections; they do **not** represent speaker turns.
+### Upgrade
+Upload all files from this package, preserving paths including `.github/workflows/deploy.yml`. The existing GitHub Actions workflow builds the project and publishes the `dist` folder.
 
-## Deploy
+### Import handling
+Audio files of 64 MB or less are first sent to the browser decoder. If decoding fails, SCRIBE-ME attempts to convert the recording locally using FFmpeg.wasm. Files over 64 MB bypass full browser decoding and are converted in 25-second portions. No colleague needs to manually convert files. The first converter run downloads a WebAssembly runtime and requires internet access.
 
-Upload all files and folders to your GitHub repository, retaining `.github/workflows/deploy.yml`. Keep GitHub Pages set to **GitHub Actions**. The workflow runs `npm install` then `npm run build` and publishes the `dist/` directory.
-
-Requires browser internet access initially to load Whisper models from Hugging Face. Audio stays in the browser. Large files, Safari support and some video codecs vary by device and have not been fully validated.
+**Limitations:** Browser RAM constraints and codec availability remain. Large video or 300 MB files are not guaranteed to process. Tested syntax only; no complete browser or GitHub Actions build verified. No speaker diarisation; labels are manual.

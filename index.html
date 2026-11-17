@@ -35,11 +35,11 @@
           <div class="formats">MP3 · M4A · WAV · MOV · MP4 · WEBM · FLAC · and more*</div>
           <div class="file-card" id="file-card"><div class="file-icon">♫</div><div class="meta"><strong id="filename"></strong><small id="filemeta"></small></div><button type="button" class="icon-btn" id="remove" aria-label="Remove recording">×</button></div>
           <div class="section-label">Processing preferences</div>
-          <div class="setting"><div><label for="model">Transcription model</label><small>TRY USING "ACCURATE" FOR COMPARABLE RESULTS TO OTTER.</small></div><select id="model" class="select"><option value="tiny">Fast</option><option value="base" selected>Balanced</option><option value="small">Accurate</option></select></div>
+          <div class="setting"><div><label for="model">Transcription model</label><small>Higher accuracy needs more memory</small></div><select id="model" class="select"><option value="tiny">Fast</option><option value="base" selected>Balanced</option><option value="small">Accurate</option></select></div>
           <div class="setting"><div><label for="engine">Processing device</label><small>GPU where supported</small></div><select id="engine" class="select"><option value="auto" selected>Automatic</option><option value="wasm">CPU compatibility</option></select></div>
-          <div class="model-note" id="model-note">English transcription with timestamps. Speaker labels can be assigned manually.</div>
+          <div class="model-note" id="model-note">English transcription with timestamps. Recordings are converted automatically when needed. Speaker labels can be assigned manually.</div>
           <button class="btn-main" id="start" type="button" disabled>Choose a recording to begin ↗</button>
-          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#dfc5c5;margin-top:12px;overflow-wrap:anywhere">Stable · Awaiting recording.</div><button id="copy-diagnostic" type="button" class="btn-outline" style="margin-top:10px;display:none">Copy error details</button>
+          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#dfc5c5;margin-top:12px;overflow-wrap:anywhere">Auto Import v2.1 · Awaiting recording.</div><button id="copy-diagnostic" type="button" class="btn-outline" style="margin-top:10px;display:none">Copy error details</button>
         </div>
         <div class="help"><span>✳</span><div><strong style="color:#efe2e2">Private by design.</strong> Recordings are processed in your browser, not stored on our servers. You may need internet access to download the AI model. Do not close the tab while processing.</div></div>
       </section>
@@ -49,7 +49,7 @@
         <div class="transcript-bottom"><span id="footer-note">Every word stays on your device.</span><button type="button" id="add-speaker" disabled>+ Add speaker label</button></div>
       </section>
     </main>
-    <footer class="foot"><strong>SCRIBE-ME / STABLE BUILD V6.</strong><span>*Codec support varies by browser. Speaker labels are manual; review transcripts before publication.</span></footer>
+    <footer class="foot"><strong>SCRIBE-ME / AUTO IMPORT V2.1.</strong><span>*Codec support varies by browser. Speaker labels are manual; review transcripts before publication.</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module" src="./src/main.js"></script>
