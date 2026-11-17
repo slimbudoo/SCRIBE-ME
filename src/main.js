@@ -1,4 +1,4 @@
-// SCRIBE-ME v1.8 — built with Vite; all application processing is on-device.
+// SCRIBE-ME v1.9 — built with Vite; all application processing is on-device.
 // The speaker-recognition engine and its Web Worker are bundled locally, not loaded from esm.sh.
 import { EngineClient, resampleTo16kMono } from '@yourdevice/engine';
 import SpeakerWorker from '@yourdevice/engine/worker?worker';
@@ -14,7 +14,7 @@ function syncProcessingMode(){const auto=$('speakers-mode').value==='auto';$('en
 $('speakers-mode').addEventListener('change',syncProcessingMode);syncProcessingMode();
 const MAX_BYTES=350*1024*1024, SLICE_SECONDS=25, MODEL_IDS={tiny:'onnx-community/whisper-tiny.en',base:'onnx-community/whisper-base.en',small:'onnx-community/whisper-small.en'};
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3900)}
-function diagnostic(message){$('diagnostics').textContent='Build 1.8 · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
+function diagnostic(message){$('diagnostics').textContent='Build 1.9 · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
 $('copy-diagnostic').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('diagnostics').textContent);notice('Error details copied.')}catch(e){notice('Select the error message to copy it.')}});
 function status(message,progress){$('status').textContent=message;if(Number.isFinite(progress)){const n=Math.max(0,Math.min(100,progress));$('percent').textContent=Math.round(n)+'%';$('bar').style.width=n+'%'}}
 function bytes(n){return (n/1024/1024).toFixed(1)+' MB'}
@@ -135,33 +135,56 @@ try{
 // Automatic diarisation: a separate browser-only AI engine, with the established
 // Whisper implementation retained as an explicit fallback. Nothing is uploaded.
 const DIARIZATION_MODELS={tiny:'whisper-tiny',base:'whisper-base',small:'whisper-small'};
-function recognisedSpeakerLabels(items){
- const unique=[];
- for(const item of items){
-  const label=typeof item.speaker==='string'?item.speaker.trim():'';
-  if(label && !unique.includes(label))unique.push(label);
+// The engine formally documents `speaker?: string`, but we also inspect common
+// alternate fields rather than silently dropping usable speaker identifiers.
+function speakerIdentity(item){
+ const candidates=[item?.speaker,item?.speakerId,item?.speaker_id,item?.speakerLabel,item?.speaker_label,item?.speaker?.id,item?.speaker?.label];
+ for(const candidate of candidates){
+  if(typeof candidate==='string'&&candidate.trim()&&!/^(unknown|unassigned|null|none)$/i.test(candidate.trim()))return candidate.trim();
+  if(typeof candidate==='number'&&Number.isFinite(candidate))return 'Voice '+candidate;
  }
- return unique;
+ return null;
+}
+function resultFieldSummary(items){
+ const counts={};for(const item of items.slice(0,30))for(const field of Object.keys(item||{}))counts[field]=(counts[field]||0)+1;
+ return Object.keys(counts).join(', ')||'(none)';
+}
+function mergeTurns(items,hasVoices){
+ // Keep every recognized word. Merge consecutive blocks from the same known
+ // speaker, with no arbitrary cut at each sentence. Without speaker identities,
+ // group by duration for readability, but NEVER guess a speaker change.
+ const out=[];const maxUnlabelledSeconds=35;
+ for(const current of items){
+  const last=out[out.length-1];
+  const gap=last?Math.max(0,current.start-last.end):0;
+  const sameSpeaker=last&&last.speaker===current.speaker;
+  const shouldJoin=last&&sameSpeaker&&gap<=2.5&&(
+   hasVoices? (current.speaker>=0 && current.start-last.start<150) :
+   (current.end-last.start<=maxUnlabelledSeconds));
+  if(shouldJoin){last.end=Math.max(last.end,current.end);last.text+=(/^[,.;!?]/.test(current.text)?'':' ')+current.text;}
+  else out.push({...current});
+ }
+ return out;
 }
 function parseDiarizedResults(items){
  if(!Array.isArray(items))throw new Error('Speaker engine returned an unexpected transcript format.');
- const rawLabels=recognisedSpeakerLabels(items);
- // Keep unlabelled text: speaker detection can fail even when ASR succeeded.
- // Never throw away a useful transcript just because diarisation returned no labels.
- const sorted=rawLabels.sort((a,b)=>{
-  const firstA=items.find(i=>i.speaker===a)?.start??Infinity;
-  const firstB=items.find(i=>i.speaker===b)?.start??Infinity;
-  return firstA-firstB;
- });
- const nextSpeakers=sorted.map((_,i)=>'Speaker '+(i+1));
- const nextSegments=items.filter(i=>typeof i.text==='string'&&i.text.trim()).map(i=>({
-  start:Number.isFinite(i.start)?Math.max(0,i.start):0,
-  end:Number.isFinite(i.end)?Math.max(0,i.end):0,
-  text:i.text.trim(),
-  speaker:sorted.indexOf(i.speaker)
- }));
- if(!nextSegments.length)throw new Error('The speaker engine did not return any usable speech.');
- return {nextSpeakers:nextSpeakers.length?nextSpeakers:['Speaker 1','Speaker 2'],nextSegments,voiceCount:rawLabels.length};
+ const speakerValues=items.map(speakerIdentity);
+ const firstSeen=[];for(const v of speakerValues)if(v&&!firstSeen.includes(v))firstSeen.push(v);
+ const labelled=items.map((item,i)=>({
+   start:Number.isFinite(item.start)?Math.max(0,item.start):0,
+   end:Number.isFinite(item.end)?Math.max(0,item.end):0,
+   text:typeof item.text==='string'?item.text.trim():'',
+   speaker:speakerValues[i]?firstSeen.indexOf(speakerValues[i]):-1
+ })).filter(x=>x.text);
+ if(!labelled.length)throw new Error('The speaker engine did not return usable speech.');
+ labelled.sort((a,b)=>a.start-b.start);
+ return {
+  nextSpeakers:firstSeen.length?firstSeen.map((_,i)=>'Speaker '+(i+1)):['Speaker 1','Speaker 2'],
+  nextSegments:mergeTurns(labelled,firstSeen.length>0),
+  voiceCount:firstSeen.length,
+  textSectionCount:labelled.length,
+  fields:resultFieldSummary(items)
+ };
 }
 async function startAutomatic(){
  if(busy||!selectedFile)return;
@@ -194,7 +217,7 @@ async function startAutomatic(){
    sampleRate:decodedAudio.sampleRate
   });
   status('Transcribing and matching voices…',24);
-  diagnostic('Matching voices across the recording. This can take significantly longer than transcription alone.');
+  diagnostic('Analysing voices and speech. If no identities are returned, the transcript will be grouped into readable blocks.');
   const raw=await diarizationEngine.transcribe(pcm,
    {task:'transcribe',language:'en'},
    {diarize:true,onPartial:(partial,processed,total)=>{
@@ -210,14 +233,14 @@ async function startAutomatic(){
   done=true;
   if(parsed.voiceCount){
    status('Transcript ready — check speaker labels',100);
-   diagnostic('SUCCESS: '+segments.length+' transcript sections · '+parsed.voiceCount+' detected voices.');
+   diagnostic('SUCCESS: '+segments.length+' speaker turns from '+parsed.textSectionCount+' text sections · '+parsed.voiceCount+' detected voices.');
    $('footer-note').textContent=segments.length+' transcript sections · '+parsed.voiceCount+' AI-detected voices · verify before quoting';
    notice('Speaker-labelled transcript ready. Check labels before using quotes.');
   }else{
    status('Transcript ready — voices not identified',100);
-   diagnostic('SPEAKER DIAGNOSTIC: '+raw.length+' engine sections, '+segments.length+' text sections; speaker property missing on all returned sections. Transcript preserved; manual labels available.');
+   diagnostic('SPEAKER DIAGNOSTIC: '+raw.length+' raw sections grouped into '+segments.length+' readable blocks. No voice IDs in returned fields: '+parsed.fields+'. Speaker labels remain unassigned; no identities were guessed.');
    $('footer-note').textContent=segments.length+' sections · no AI speaker labels were returned; manual speaker labels available';
-   notice('Transcript saved. The voice engine returned no speaker labels; no second transcription needed.');
+   notice('Transcript ready in readable blocks. Automatic voice detection returned no labels.');
   }
  }catch(err){
   console.error('Automatic speaker processing failed:',err);

@@ -1,3 +1,7 @@
+## v1.9 testing note
+
+Speaker detection remains experimental. If no speaker identities are returned, SCRIBE-ME merges consecutive text into approximately 35-second readable blocks without guessing speaker identities. This does not constitute automatic diarisation. Diagnostic information names fields returned by the engine.
+
 # SCRIBE-ME v1.7
 
 A free browser transcription workspace for recorded interviews. Hosted on GitHub Pages. Recordings stay in the visitor's browser; no audio uploads or paid transcription API.
