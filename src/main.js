@@ -1,4 +1,4 @@
-// SCRIBE-ME v1.7 — built with Vite; all application processing is on-device.
+// SCRIBE-ME v1.8 — built with Vite; all application processing is on-device.
 // The speaker-recognition engine and its Web Worker are bundled locally, not loaded from esm.sh.
 import { EngineClient, resampleTo16kMono } from '@yourdevice/engine';
 import SpeakerWorker from '@yourdevice/engine/worker?worker';
@@ -14,7 +14,7 @@ function syncProcessingMode(){const auto=$('speakers-mode').value==='auto';$('en
 $('speakers-mode').addEventListener('change',syncProcessingMode);syncProcessingMode();
 const MAX_BYTES=350*1024*1024, SLICE_SECONDS=25, MODEL_IDS={tiny:'onnx-community/whisper-tiny.en',base:'onnx-community/whisper-base.en',small:'onnx-community/whisper-small.en'};
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3900)}
-function diagnostic(message){$('diagnostics').textContent='Build 1.7 · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
+function diagnostic(message){$('diagnostics').textContent='Build 1.8 · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
 $('copy-diagnostic').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('diagnostics').textContent);notice('Error details copied.')}catch(e){notice('Select the error message to copy it.')}});
 function status(message,progress){$('status').textContent=message;if(Number.isFinite(progress)){const n=Math.max(0,Math.min(100,progress));$('percent').textContent=Math.round(n)+'%';$('bar').style.width=n+'%'}}
 function bytes(n){return (n/1024/1024).toFixed(1)+' MB'}
@@ -146,7 +146,8 @@ function recognisedSpeakerLabels(items){
 function parseDiarizedResults(items){
  if(!Array.isArray(items))throw new Error('Speaker engine returned an unexpected transcript format.');
  const rawLabels=recognisedSpeakerLabels(items);
- if(!rawLabels.length)throw new Error('The speaker engine returned text, but did not recognise any distinct voices.');
+ // Keep unlabelled text: speaker detection can fail even when ASR succeeded.
+ // Never throw away a useful transcript just because diarisation returned no labels.
  const sorted=rawLabels.sort((a,b)=>{
   const firstA=items.find(i=>i.speaker===a)?.start??Infinity;
   const firstB=items.find(i=>i.speaker===b)?.start??Infinity;
@@ -160,8 +161,7 @@ function parseDiarizedResults(items){
   speaker:sorted.indexOf(i.speaker)
  }));
  if(!nextSegments.length)throw new Error('The speaker engine did not return any usable speech.');
- if(nextSegments.every(i=>i.speaker<0))throw new Error('The speaker engine could not assign voices.');
- return {nextSpeakers,nextSegments};
+ return {nextSpeakers:nextSpeakers.length?nextSpeakers:['Speaker 1','Speaker 2'],nextSegments,voiceCount:rawLabels.length};
 }
 async function startAutomatic(){
  if(busy||!selectedFile)return;
@@ -208,10 +208,17 @@ async function startAutomatic(){
   render();
   if(!segments.length||$('download').disabled)throw new Error('Speaker transcript could not be displayed.');
   done=true;
-  status('Transcript ready — check speaker labels',100);
-  diagnostic('SUCCESS: '+segments.length+' transcript sections · '+speakers.length+' detected voices.');
-  $('footer-note').textContent=segments.length+' transcript sections · '+speakers.length+' AI-detected voices · verify before quoting';
-  notice('Speaker-labelled transcript ready. Check labels before using quotes.');
+  if(parsed.voiceCount){
+   status('Transcript ready — check speaker labels',100);
+   diagnostic('SUCCESS: '+segments.length+' transcript sections · '+parsed.voiceCount+' detected voices.');
+   $('footer-note').textContent=segments.length+' transcript sections · '+parsed.voiceCount+' AI-detected voices · verify before quoting';
+   notice('Speaker-labelled transcript ready. Check labels before using quotes.');
+  }else{
+   status('Transcript ready — voices not identified',100);
+   diagnostic('SPEAKER DIAGNOSTIC: '+raw.length+' engine sections, '+segments.length+' text sections; speaker property missing on all returned sections. Transcript preserved; manual labels available.');
+   $('footer-note').textContent=segments.length+' sections · no AI speaker labels were returned; manual speaker labels available';
+   notice('Transcript saved. The voice engine returned no speaker labels; no second transcription needed.');
+  }
  }catch(err){
   console.error('Automatic speaker processing failed:',err);
   const reason=err?.message||String(err);

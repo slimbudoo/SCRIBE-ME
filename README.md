@@ -38,3 +38,10 @@ npm run build
 ## Troubleshooting
 
 If **Build and deploy SCRIBE-ME** fails, copy the first red error from the GitHub Actions log. If it builds but automatic speaker matching fails, copy the exact on-screen message. If a model download fails, try another browser or network and compare with Manual · Faster mode.
+
+## v1.8 troubleshooting update
+If the speaker engine returns text without speaker labels, SCRIBE-ME now keeps
+that transcription and enables TXT export without running the older transcription
+engine again. The diagnostic message reports the number of engine sections and
+whether all returned speaker labels were absent. It does **not** repair upstream
+speaker diarisation; the browser-based model must return labels for that to work.
