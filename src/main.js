@@ -1,20 +1,13 @@
-// SCRIBE-ME v1.9 — built with Vite; all application processing is on-device.
-// The speaker-recognition engine and its Web Worker are bundled locally, not loaded from esm.sh.
-import { EngineClient, resampleTo16kMono } from '@yourdevice/engine';
-import SpeakerWorker from '@yourdevice/engine/worker?worker';
+// SCRIBE-ME stable — local speech transcription. No automatic speaker identification.
 // SCRIBE-ME: static, single-file client-side transcription. No upload endpoint.
 const $=id=>document.getElementById(id);
 const waveHeights=[18,37,63,25,91,46,72,116,57,92,40,124,72,49,108,32,84,66,24,77,39,60,17];
 $('wave').innerHTML=waveHeights.map((h,i)=>`<b style="--h:${h}px;--o:${0.55+0.45*Math.sin((i+3)/24*Math.PI)}"></b>`).join('');
 let selectedFile=null, objectUrl=null, decoded=null, worker=null, segments=[], speakers=['Speaker 1','Speaker 2'], busy=false, toastTimer;
 let audioContext=null, duration=0;
-let diarizationEngine=null;
-let speakerError='';
-function syncProcessingMode(){const auto=$('speakers-mode').value==='auto';$('engine').disabled=auto;$('engine').title=auto?'Automatic speaker engine chooses GPU or CPU based on browser support.':'Choose device for regular Whisper transcription.'}
-$('speakers-mode').addEventListener('change',syncProcessingMode);syncProcessingMode();
 const MAX_BYTES=350*1024*1024, SLICE_SECONDS=25, MODEL_IDS={tiny:'onnx-community/whisper-tiny.en',base:'onnx-community/whisper-base.en',small:'onnx-community/whisper-small.en'};
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3900)}
-function diagnostic(message){$('diagnostics').textContent='Build 1.9 · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
+function diagnostic(message){$('diagnostics').textContent='Stable · '+message;$('copy-diagnostic').style.display=message.includes('failed:')?'inline-block':'none'}
 $('copy-diagnostic').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('diagnostics').textContent);notice('Error details copied.')}catch(e){notice('Select the error message to copy it.')}});
 function status(message,progress){$('status').textContent=message;if(Number.isFinite(progress)){const n=Math.max(0,Math.min(100,progress));$('percent').textContent=Math.round(n)+'%';$('bar').style.width=n+'%'}}
 function bytes(n){return (n/1024/1024).toFixed(1)+' MB'}
@@ -86,7 +79,7 @@ function appendResult(result,offset,length){
   segments.push({start:offset,end:offset+length,text:result.text.trim(),speaker:-1});
  return segments.length-originalCount;
 }
-async function startManual(){if(busy||!selectedFile)return;busy=true;const button=$('start');button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;$('speakers-mode').disabled=true;button.textContent='Transcribing…';let done=false;
+async function startManual(){if(busy||!selectedFile)return;busy=true;const button=$('start');button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;button.textContent='Transcribing…';let done=false;
 try{
  status('Preparing recording…',0);diagnostic('Starting a new transcription.');$('count').textContent='0 sections';
  const ctx=new (window.AudioContext||window.webkitAudioContext)();audioContext=ctx;
@@ -130,145 +123,9 @@ try{
   diagnostic('Processed '+(i+1)+' of '+total+' audio sections · '+segments.length+' transcript sections produced.');status('Finished segment '+(i+1)+' of '+total,12+82*((i+1)/total));
  }
  if(!segments.length)throw new Error('AI returned no usable transcript text. Try Fast · Tiny / CPU, and see the diagnostic line below the progress bar.');
- render();if(!segments.length||$('download').disabled||!$('transcript').querySelector('.segment'))throw new Error('Transcript could not be displayed. No success was reported.');done=true;diagnostic('SUCCESS: '+segments.length+' transcript sections displayed; TXT download is enabled.');status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review speech and speaker labels before publication';notice('Transcription complete. Review and download your TXT file.');
-}catch(err){console.error(err);diagnostic('FAILED: '+(err?.message||'Transcription failed'));status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;$('speakers-mode').disabled=false;syncProcessingMode();decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
-// Automatic diarisation: a separate browser-only AI engine, with the established
-// Whisper implementation retained as an explicit fallback. Nothing is uploaded.
-const DIARIZATION_MODELS={tiny:'whisper-tiny',base:'whisper-base',small:'whisper-small'};
-// The engine formally documents `speaker?: string`, but we also inspect common
-// alternate fields rather than silently dropping usable speaker identifiers.
-function speakerIdentity(item){
- const candidates=[item?.speaker,item?.speakerId,item?.speaker_id,item?.speakerLabel,item?.speaker_label,item?.speaker?.id,item?.speaker?.label];
- for(const candidate of candidates){
-  if(typeof candidate==='string'&&candidate.trim()&&!/^(unknown|unassigned|null|none)$/i.test(candidate.trim()))return candidate.trim();
-  if(typeof candidate==='number'&&Number.isFinite(candidate))return 'Voice '+candidate;
- }
- return null;
-}
-function resultFieldSummary(items){
- const counts={};for(const item of items.slice(0,30))for(const field of Object.keys(item||{}))counts[field]=(counts[field]||0)+1;
- return Object.keys(counts).join(', ')||'(none)';
-}
-function mergeTurns(items,hasVoices){
- // Keep every recognized word. Merge consecutive blocks from the same known
- // speaker, with no arbitrary cut at each sentence. Without speaker identities,
- // group by duration for readability, but NEVER guess a speaker change.
- const out=[];const maxUnlabelledSeconds=35;
- for(const current of items){
-  const last=out[out.length-1];
-  const gap=last?Math.max(0,current.start-last.end):0;
-  const sameSpeaker=last&&last.speaker===current.speaker;
-  const shouldJoin=last&&sameSpeaker&&gap<=2.5&&(
-   hasVoices? (current.speaker>=0 && current.start-last.start<150) :
-   (current.end-last.start<=maxUnlabelledSeconds));
-  if(shouldJoin){last.end=Math.max(last.end,current.end);last.text+=(/^[,.;!?]/.test(current.text)?'':' ')+current.text;}
-  else out.push({...current});
- }
- return out;
-}
-function parseDiarizedResults(items){
- if(!Array.isArray(items))throw new Error('Speaker engine returned an unexpected transcript format.');
- const speakerValues=items.map(speakerIdentity);
- const firstSeen=[];for(const v of speakerValues)if(v&&!firstSeen.includes(v))firstSeen.push(v);
- const labelled=items.map((item,i)=>({
-   start:Number.isFinite(item.start)?Math.max(0,item.start):0,
-   end:Number.isFinite(item.end)?Math.max(0,item.end):0,
-   text:typeof item.text==='string'?item.text.trim():'',
-   speaker:speakerValues[i]?firstSeen.indexOf(speakerValues[i]):-1
- })).filter(x=>x.text);
- if(!labelled.length)throw new Error('The speaker engine did not return usable speech.');
- labelled.sort((a,b)=>a.start-b.start);
- return {
-  nextSpeakers:firstSeen.length?firstSeen.map((_,i)=>'Speaker '+(i+1)):['Speaker 1','Speaker 2'],
-  nextSegments:mergeTurns(labelled,firstSeen.length>0),
-  voiceCount:firstSeen.length,
-  textSectionCount:labelled.length,
-  fields:resultFieldSummary(items)
- };
-}
-async function startAutomatic(){
- if(busy||!selectedFile)return;
- busy=true;
- const button=$('start');let done=false;
- button.disabled=true;$('remove').disabled=true;$('model').disabled=true;$('engine').disabled=true;$('speakers-mode').disabled=true;
- button.textContent='Transcribing and identifying speakers…';
- try{
-  speakerError='';segments=[];render();status('Preparing recording for speaker recognition…',2);
-  diagnostic('Loading browser-only speaker recognition engine. Model downloads may take time.');
-  // Vite bundles this worker as a same-origin JavaScript asset under /SCRIBE-ME/assets/.
-  // No cross-origin dynamic imports or CDN-hosted worker scripts.
-  const workerFactory=()=>new SpeakerWorker();
-  diarizationEngine=new EngineClient(workerFactory);
-  diarizationEngine.onDownloadProgress=({loadedBytes,totalBytes})=>{
-   if(totalBytes>0)status('Downloading speaker and speech models…',Math.min(18,4+14*loadedBytes/totalBytes));
-  };
-  const model=DIARIZATION_MODELS[$('model').value];
-  status('Initialising speech and speaker models…',6);
-  // The client owns the device fallback: WebNN, WebGPU, then WASM.
-  const capabilities=await diarizationEngine.init(model);
-  diagnostic('AI engine active on '+(capabilities?.active||'browser')+' · preparing voice analysis.');
-  status('Decoding recording locally…',20);
-  const ctx=new (window.AudioContext||window.webkitAudioContext)();audioContext=ctx;
-  const decodedAudio=await ctx.decodeAudioData(await selectedFile.arrayBuffer());
-  if(!decodedAudio.duration||!Number.isFinite(decodedAudio.duration))throw new Error('No decodable audio was found.');
-  duration=decodedAudio.duration;
-  const pcm=resampleTo16kMono({
-   channelData:Array.from({length:decodedAudio.numberOfChannels},(_,i)=>decodedAudio.getChannelData(i)),
-   sampleRate:decodedAudio.sampleRate
-  });
-  status('Transcribing and matching voices…',24);
-  diagnostic('Analysing voices and speech. If no identities are returned, the transcript will be grouped into readable blocks.');
-  const raw=await diarizationEngine.transcribe(pcm,
-   {task:'transcribe',language:'en'},
-   {diarize:true,onPartial:(partial,processed,total)=>{
-    if(total>0)status('Analysing speech and speakers…',24+Math.min(65,65*processed/total));
-    if(Array.isArray(partial))diagnostic('AI analysing '+Math.round(processed)+' / '+Math.round(total)+' seconds · '+partial.length+' text sections so far.');
-   }});
-  status('Preparing speaker-labelled transcript…',94);
-  const parsed=parseDiarizedResults(raw);
-  speakers=parsed.nextSpeakers;
-  segments=parsed.nextSegments;
-  render();
-  if(!segments.length||$('download').disabled)throw new Error('Speaker transcript could not be displayed.');
-  done=true;
-  if(parsed.voiceCount){
-   status('Transcript ready — check speaker labels',100);
-   diagnostic('SUCCESS: '+segments.length+' speaker turns from '+parsed.textSectionCount+' text sections · '+parsed.voiceCount+' detected voices.');
-   $('footer-note').textContent=segments.length+' transcript sections · '+parsed.voiceCount+' AI-detected voices · verify before quoting';
-   notice('Speaker-labelled transcript ready. Check labels before using quotes.');
-  }else{
-   status('Transcript ready — voices not identified',100);
-   diagnostic('SPEAKER DIAGNOSTIC: '+raw.length+' raw sections grouped into '+segments.length+' readable blocks. No voice IDs in returned fields: '+parsed.fields+'. Speaker labels remain unassigned; no identities were guessed.');
-   $('footer-note').textContent=segments.length+' sections · no AI speaker labels were returned; manual speaker labels available';
-   notice('Transcript ready in readable blocks. Automatic voice detection returned no labels.');
-  }
- }catch(err){
-  console.error('Automatic speaker processing failed:',err);
-  const reason=err?.message||String(err);
-  speakerError=reason;
-  status('Automatic speaker identification unavailable',0);
-  diagnostic('AI speaker detection failed: '+reason+' · Falling back to proven transcription.');
-  notice('Voice matching failed: '+reason.slice(0,140)+'. Regular transcription will continue.');
- }finally{
-  try{diarizationEngine?.dispose()}catch(e){console.warn('Engine cleanup:',e)}
-  diarizationEngine=null;
-  if(audioContext){audioContext.close().catch(()=>{});audioContext=null}
-  busy=false;$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;$('speakers-mode').disabled=false;syncProcessingMode();
-  button.disabled=!selectedFile;
-  button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';
- }
- if(!done){
-  // Do not lose the original working transcription route when diarisation fails.
-  speakers=['Speaker 1','Speaker 2'];
-  await startManual();
-  if(segments.length){
-   diagnostic('Normal transcription succeeded. Voice recognition failed: '+speakerError+' · Assign speakers manually.');
-   $('footer-note').textContent=segments.length+' sections · speaker recognition unavailable; manual speaker labels';
-  }
- }
-}
-function start(){return $('speakers-mode').value==='auto'?startAutomatic():startManual()}
-$('start').addEventListener('click',start);
+ render();if(!segments.length||$('download').disabled||!$('transcript').querySelector('.segment'))throw new Error('Transcript could not be displayed. No success was reported.');done=true;diagnostic('SUCCESS: '+segments.length+' transcript sections displayed; TXT download is enabled.');status('Transcript ready — review before quoting',100);$('footer-note').textContent=segments.length+' transcript sections · review text before publication';notice('Transcription complete. Review and download your TXT file.');
+}catch(err){console.error(err);diagnostic('FAILED: '+(err?.message||'Transcription failed'));status('Error: '+(err?.message||'Transcription failed'),0);notice((err?.message||'Something went wrong')+' Try CPU compatibility or a smaller model.')}finally{busy=false;button.disabled=!selectedFile;button.textContent=done?'↻  Transcribe again':'✳  Try transcription again';$('remove').disabled=false;$('model').disabled=false;$('engine').disabled=false;decoded=null;if(audioContext){audioContext.close().catch(()=>{});audioContext=null}render()}}
+$('start').addEventListener('click',startManual);
 function transcriptText(){return segments.map(s=>`[${stamp(s.start)}] ${speakers[s.speaker]||'Unassigned'}: ${s.text.trim()}`).join('\n\n')}
 function render(){const t=$('transcript');t.replaceChildren();$('copy').disabled=!segments.length;$('download').disabled=!segments.length;$('add-speaker').disabled=!segments.length;$('search-area').style.display=segments.length?'flex':'none';
  if(!segments.length){$('count').textContent='0 sections';const div=document.createElement('div');div.className='empty';div.id='empty';div.innerHTML='<div class="empty-orbit">≋</div><h3>A blank page, for now.</h3><p>When your transcription is ready, you\'ll find the words here. Review, edit, play back and export.</p>';t.appendChild(div);return}

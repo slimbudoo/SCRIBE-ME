@@ -28,7 +28,7 @@
     </section>
     <main class="workspace">
       <section class="panel" aria-labelledby="upload-heading">
-        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">V1.9 · IMPORT & PROCESS</span></div>
+        <div class="panel-head"><h2 id="upload-heading"><span class="num">01 /</span> Your recording</h2><span class="panel-sub">STABLE · IMPORT & PROCESS</span></div>
         <div class="panel-body">
           <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a recording or drag one here"><div class="drop-icon">↥</div><strong>Drag your recording here</strong><p>Audio or video. Just drop it in and go.</p><button type="button" class="browse" id="browse">Choose a file&nbsp; ↗</button></div>
           <input id="file" type="file" hidden accept="audio/*,video/*,.mp3,.m4a,.mov,.mp4,.wav,.webm,.flac,.aac,.ogg,.opus,.wma,.mkv,.3gp">
@@ -36,11 +36,10 @@
           <div class="file-card" id="file-card"><div class="file-icon">♫</div><div class="meta"><strong id="filename"></strong><small id="filemeta"></small></div><button type="button" class="icon-btn" id="remove" aria-label="Remove recording">×</button></div>
           <div class="section-label">Processing preferences</div>
           <div class="setting"><div><label for="model">Transcription model</label><small>Higher accuracy needs more memory</small></div><select id="model" class="select"><option value="tiny">Fast · Tiny</option><option value="base" selected>Balanced · Base</option><option value="small">Accurate · Small</option></select></div>
-          <div class="setting"><div><label for="engine">Processing device</label><small>Used for manual speaker mode only</small></div><select id="engine" class="select"><option value="auto" selected>Automatic</option><option value="wasm">CPU compatibility</option></select></div>
-          <div class="setting"><div><label for="speakers-mode">Speaker recognition</label><small>Match voices throughout the recording</small></div><select id="speakers-mode" class="select"><option value="auto" selected>Automatic · AI</option><option value="manual">Manual · Faster</option></select></div>
-          <div class="model-note" id="model-note">Automatic speaker recognition uses additional local AI models, which download on first use. It can be slower and may confuse short replies or overlapping voices. Check speaker labels before quoting.</div>
+          <div class="setting"><div><label for="engine">Processing device</label><small>GPU where supported</small></div><select id="engine" class="select"><option value="auto" selected>Automatic</option><option value="wasm">CPU compatibility</option></select></div>
+          <div class="model-note" id="model-note">English transcription with timestamps. Speaker labels can be assigned manually. The AI model downloads on first use; recordings stay on your device.</div>
           <button class="btn-main" id="start" type="button" disabled>Choose a recording to begin ↗</button>
-          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Build 1.8 · Awaiting recording.</div><button id="copy-diagnostic" type="button" class="btn-outline" style="margin-top:10px;display:none">Copy error details</button>
+          <div class="status"><span id="status" role="status" aria-live="polite">Ready when you are</span><span id="percent">0%</span></div><div class="meter" aria-label="Transcription progress"><div id="bar"></div></div><div id="diagnostics" role="status" aria-live="polite" style="font-size:11px;line-height:1.6;color:#c0d6ca;margin-top:12px;overflow-wrap:anywhere">Stable · Awaiting recording.</div><button id="copy-diagnostic" type="button" class="btn-outline" style="margin-top:10px;display:none">Copy error details</button>
         </div>
         <div class="help"><span>✳</span><div><strong style="color:#d9e7df">Private by design.</strong> Recordings are processed in your browser, not stored on our servers. You may need internet access to download the AI model. Do not close the tab while processing.</div></div>
       </section>
@@ -50,7 +49,7 @@
         <div class="transcript-bottom"><span id="footer-note">Every word stays on your device.</span><button type="button" id="add-speaker" disabled>+ Add speaker label</button></div>
       </section>
     </main>
-    <footer class="foot"><strong>SCRIBE-ME / V1.9 · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. AI speaker labels are estimates; check them before publication.</span></footer>
+    <footer class="foot"><strong>SCRIBE-ME / STABLE · A LITTLE LESS TYPING.</strong><span>*Codec support varies by browser. Speaker labels are manual; review transcripts before publication.</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module" src="./src/main.js"></script>

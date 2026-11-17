@@ -1,16 +1,14 @@
 {
   "name": "scribe-me",
   "private": true,
-  "version": "1.9.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
-  "dependencies": {
-    "@yourdevice/engine": "0.1.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "vite": "6.3.5"
   }
